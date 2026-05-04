@@ -1,4 +1,4 @@
-name: Monitor settimanale ENEA
+name: Monitor settimanale ENEA V2
 
 on:
   schedule:
@@ -23,12 +23,17 @@ jobs:
       - name: Installa le librerie
         run: pip install -r requirements.txt
 
-      - name: Esegui il flusso di monitoraggio
+      - name: Esegui la ricerca eventi
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: python main.py
 
-      - name: Salva il PDF come artifact scaricabile
+      - name: Salva il Markdown come artifact scaricabile
         uses: actions/upload-artifact@v4
         with:
-          name: report-settimana-${{ github.run_number }}
+          name: report-eventi-${{ github.run_number }}
           path: output/
           retention-days: 90
+
+      - name: Pubblica il report come Job Summary
+        run: cat output/*.md >> $GITHUB_STEP_SUMMARY
