@@ -1,163 +1,83 @@
-# ENEA Event Monitor
+# ENEA Event Monitor — V2
 
-Flusso automatico di monitoraggio settimanale di eventi e convegni rilevanti per
-il core business ENEA: energia rinnovabile e transizione, nucleare, efficienza
-energetica, economia circolare, sostenibilità ed ESG.
+Monitoraggio automatico di eventi italiani sulle aree core ENEA (energia
+rinnovabile, nucleare, efficienza, economia circolare, sostenibilità).
 
-Produce in output un PDF settimanale nello stile dei report istituzionali ENEA,
-con classificazione A/B/C di ogni evento.
+A differenza della V1, **questa versione fa ricerca web reale** tramite
+l'API Anthropic con il tool `web_search` integrato. Non richiede scraper
+specifici per ogni sito — Claude trova le informazioni ovunque siano
+pubblicate.
 
----
+## Output
 
-## Struttura del progetto
+Un file Markdown con la lista di tutti gli eventi futuri trovati,
+raggruppati per area tematica. Ogni evento ha:
 
+- Titolo (cliccabile, link diretto alla pagina)
+- Data
+- Luogo
+- Organizzatore
+
+Esempio:
+
+```markdown
+## Energia rinnovabile e transizione
+
+- **[Solar Construction 2026](https://italiasolare.eu/...)**
+  📅 28 maggio 2026 · 📍 Bari · 🏛 Italia Solare
 ```
-enea_monitor/
-├── sources.py          # catalogo delle 25 fonti da monitorare
-├── scraper.py          # raccolta eventi + cache deduplica
-├── classifier.py       # classificatore A/B/C (regole + keyword)
-├── pdf_generator.py    # generatore PDF in stile ENEA
-├── main.py             # orchestratore del flusso
-└── output/             # PDF e JSON generati
-```
 
----
-
-## Avvio rapido (modalità demo)
+## Uso locale
 
 ```bash
-pip install reportlab requests beautifulsoup4 feedparser
-python main.py --week 2026-04-27
+pip install -r requirements.txt
+export ANTHROPIC_API_KEY=sk-ant-api03-...
+python main.py
 ```
 
-Output:
-- `output/ENEA_settimana_2026-04-27.pdf` — report settimanale
-- `output/events_2026-04-27.json` — archivio dati strutturato
-- `output/events_cache.db` — cache per tracciare eventi già visti
+Output in `output/events_YYYY-MM-DD.md` e `.json`.
 
----
+## Uso automatico (GitHub Actions)
 
-## Attivare lo scraping reale
+Il workflow `monitor-settimanale.yml` gira ogni lunedì alle 7:00 ora
+italiana e:
 
-Il codice attuale usa **dati mock** per dimostrare il flusso. Per attivare lo
-scraping reale:
+1. Esegue `main.py`
+2. Salva il Markdown come artifact scaricabile (90 giorni di retention)
+3. Pubblica il report come "Job Summary" — visibile direttamente sulla
+   pagina dell'esecuzione GitHub, senza scaricare niente
 
-1. Implementare i parser specifici in `scraper.py`:
-   - `parse_quirinale` — agenda del Presidente della Repubblica
-   - `parse_governo` — agenda del Presidente del Consiglio
-   - `parse_mase` — eventi del Ministero dell'Ambiente
+Per attivarlo serve un **secret** `ANTHROPIC_API_KEY` configurato nelle
+impostazioni del repository.
 
-2. Eseguire con `--live`:
-   ```bash
-   python main.py --live
-   ```
+## Costi
 
-3. Per le fonti con RSS, `scrape_source` userà automaticamente `feedparser`.
+L'API Anthropic costa per uso. Stima per esecuzione settimanale:
 
----
+- 5 aree × ~3 ricerche web × ~1.500 token = ~25.000 token totali
+- Modello Sonnet 4.5: ~0,30 € per esecuzione
+- Mensile (4 esecuzioni): **~1,20 €**
 
-## Come si classifica un evento (A / B / C)
+Si possono ridurre i costi:
 
-Il classificatore combina 7 segnali per ogni evento:
+- Diminuendo `WEB_SEARCH_MAX_USES` da 3 a 2 in `main.py`
+- Riducendo il numero di aree in `AREAS`
+- Eseguendo ogni 2 settimane invece che ogni settimana
 
-| Segnale | Peso |
-|---------|------|
-| Presenza di ministro/presidente nel titolo | +3 per keyword |
-| Presenza nel testo di keyword tematiche ENEA | +2 per keyword |
-| Partecipazione istituzionale esplicita (SM/GM/GP) | +5 |
-| Organizzatore "high-priority" (ASviS, WEC, TEHA...) | +3 |
-| Sede istituzionale (Quirinale, Senato...) | +4 |
-| Evento online invece che in presenza | −1 |
+## Personalizzazione
 
-Soglie finali:
-- score_A ≥ 5 → **A** (partecipazione istituzionale raccomandata)
-- score_A ≥ 3 o score_B ≥ 4 → **B** (presidio ENEA opportuno)
-- altrimenti → **C** (monitoraggio)
+Tutti i parametri principali sono in cima a `main.py`:
 
-### Fallback con Claude API (opzionale)
+- `AREAS` — aree tematiche da cercare
+- `MODEL` — modello Claude da usare
+- `WEB_SEARCH_MAX_USES` — quante ricerche per area
 
-Per gli eventi borderline (punteggi simili tra A e B), è disponibile
-`classify_with_llm` in `classifier.py`. Richiede:
+## Differenze V2 vs V1
 
-```bash
-pip install anthropic
-export ANTHROPIC_API_KEY=sk-ant-...
-```
-
----
-
-## Fonti monitorate (25)
-
-### Istituzionali (4)
-- Quirinale · Governo · MASE · ARERA · GSE
-
-### Energia e rinnovabili (7)
-- Italia Solare · Elettricità Futura · ANEV · Coordinamento FREE
-- AIEE · WEC Italia · FIPER
-
-### Efficienza energetica (3)
-- FIRE · Kyoto Club · Motus-E
-
-### Nucleare (2)
-- SOGIN · AIN (Associazione Italiana Nucleare)
-
-### Economia circolare (3)
-- Comieco · Fondazione Sviluppo Sostenibile · Utilitalia
-
-### Sostenibilità (2)
-- ASviS · Legambiente
-
-### Media e think tank (3)
-- Il Sole 24 Ore · Staffetta Quotidiana · TEHA
-
----
-
-## Automazione settimanale
-
-Per far girare il flusso ogni lunedì alle 7:00 (cron):
-
-```bash
-0 7 * * 1 cd /path/to/enea_monitor && /usr/bin/python3 main.py --live >> logs/run.log 2>&1
-```
-
-In alternativa con GitHub Actions (`.github/workflows/weekly.yml`):
-
-```yaml
-on:
-  schedule:
-    - cron: '0 7 * * 1'   # lunedì 07:00 UTC
-jobs:
-  monitor:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - run: pip install -r requirements.txt
-      - run: python main.py --live
-      - uses: actions/upload-artifact@v4
-        with: { name: report, path: output/ }
-```
-
----
-
-## Roadmap suggerita
-
-### Fase 1 — MVP (implementato qui)
-- [x] Architettura modulare
-- [x] Catalogo fonti
-- [x] Mock data + PDF generation
-- [x] Classificatore deterministico
-
-### Fase 2 — Scraping reale
-- [ ] Implementare i 25 parser specifici
-- [ ] Gestione robusta degli errori di rete
-- [ ] Rotazione user-agent e rispetto `robots.txt`
-
-### Fase 3 — Qualità
-- [ ] Integrazione Claude API per casi borderline
-- [ ] Notifica email / Slack quando compare evento classe A
-- [ ] Dashboard web (Streamlit) per consultare l'archivio
-
-### Fase 4 — Espansione
-- [ ] Aggiungere LinkedIn Events e Eventbrite
-- [ ] Monitorare Twitter/X account istituzionali
-- [ ] Estrazione location da GPS per mappe
+| Aspetto | V1 | V2 |
+|---------|----|----|
+| Eventi | Mock finti | Veri, dal web |
+| Codice | 7 file, ~600 righe | 1 file, ~200 righe |
+| Output | PDF impaginato | Markdown con link |
+| Manutenzione | Scraper da fixare | Niente da manutenere |
+| Costo | 0 | ~1,20 €/mese |
