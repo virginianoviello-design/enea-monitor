@@ -2,13 +2,9 @@
 ENEA Event Monitor — V2
 
 Usa l'API Anthropic con il tool nativo `web_search` per trovare eventi
-reali sul web, senza dover scrivere uno scraper per ogni singolo sito.
+reali sul web.
 
 Output: lista Markdown con titolo, data, luogo, link, organizzatore.
-
-Uso:
-    export ANTHROPIC_API_KEY=sk-ant-...
-    python main.py
 """
 
 import json
@@ -21,17 +17,10 @@ from pathlib import Path
 from anthropic import Anthropic
 
 
-# ============================================================
-# CONFIGURAZIONE
-# ============================================================
-
-# Aree tematiche su cui Claude cercherà eventi.
-# Ogni area diventerà una richiesta separata all'API per avere
-# risultati più precisi e diversificati.
 AREAS = [
     {
         "name": "Energia rinnovabile e transizione",
-        "keywords": "energia rinnovabile, fotovoltaico, eolico, transizione energetica, comunità energetiche, storage",
+        "keywords": "energia rinnovabile, fotovoltaico, eolico, transizione energetica, comunita energetiche, storage",
     },
     {
         "name": "Nucleare",
@@ -46,27 +35,22 @@ AREAS = [
         "keywords": "economia circolare, riciclo, rifiuti, recupero materiali, packaging sostenibile",
     },
     {
-        "name": "Sostenibilità e ESG",
-        "keywords": "sostenibilità, ESG, rendicontazione sostenibilità, sviluppo sostenibile",
+        "name": "Sostenibilita e ESG",
+        "keywords": "sostenibilita, ESG, rendicontazione sostenibilita, sviluppo sostenibile",
     },
 ]
 
 MODEL = "claude-sonnet-4-6"
 MAX_TOKENS = 4096
-WEB_SEARCH_MAX_USES = 3  # max ricerche web per ciascuna area
+WEB_SEARCH_MAX_USES = 3
 
 
-# ============================================================
-# PROMPT
-# ============================================================
-
-def build_search_prompt(area: dict, today_iso: str) -> str:
-    """Crea il prompt per Claude per una singola area tematica."""
+def build_search_prompt(area, today_iso):
     return f"""Sei un assistente che monitora eventi e convegni in Italia per ENEA
 (Agenzia nazionale per le nuove tecnologie, l'energia e lo sviluppo
 economico sostenibile).
 
-Oggi è il {today_iso}.
+Oggi e il {today_iso}.
 
 Cerca sul web TUTTI gli eventi, convegni, conferenze, webinar e presentazioni
 italiani FUTURI (data uguale o successiva a oggi) sull'area tematica:
@@ -75,17 +59,17 @@ italiani FUTURI (data uguale o successiva a oggi) sull'area tematica:
 Parole chiave correlate: {area['keywords']}
 
 Concentrati su eventi organizzati da:
-- Associazioni di settore (Italia Solare, Elettricità Futura, ANEV, FIRE,
+- Associazioni di settore (Italia Solare, Elettricita Futura, ANEV, FIRE,
   Kyoto Club, Motus-E, Coordinamento FREE, Comieco, Utilitalia, ASviS,
   Legambiente, WEC Italia, Fondazione per lo Sviluppo Sostenibile)
 - Istituzioni (MASE, ARERA, GSE, Quirinale, Senato)
 - Media specializzati (Il Sole 24 Ore, Staffetta Quotidiana)
-- Università e think tank (TEHA / The European House Ambrosetti)
+- Universita e think tank (TEHA / The European House Ambrosetti)
 
-Fai PIÙ ricerche se servono per coprire bene l'area.
+Fai PIU ricerche se servono per coprire bene l'area.
 
 Per ogni evento trovato, restituisci ESCLUSIVAMENTE un oggetto JSON con
-questa struttura ESATTA — niente testo prima o dopo, niente markdown,
+questa struttura ESATTA, niente testo prima o dopo, niente markdown,
 niente backtick, solo JSON puro:
 
 {{
@@ -93,7 +77,7 @@ niente backtick, solo JSON puro:
     {{
       "title": "Titolo esatto dell'evento",
       "date": "YYYY-MM-DD",
-      "location": "Città, oppure 'Online'",
+      "location": "Citta, oppure Online",
       "organizer": "Chi organizza l'evento",
       "url": "Link diretto alla pagina dell'evento",
       "area": "{area['name']}"
@@ -101,21 +85,16 @@ niente backtick, solo JSON puro:
   ]
 }}
 
-Regole importanti:
+Regole:
 - Se non riesci a determinare la data esatta, usa il primo del mese stimato
-- Se l'evento è su più giorni, usa la data di inizio
+- Se l'evento e su piu giorni, usa la data di inizio
 - Includi solo eventi con un link verificabile
 - NON inventare eventi: se non trovi nulla, restituisci {{"events": []}}
 - Massimo 15 eventi per area
 """
 
 
-# ============================================================
-# CHIAMATA API
-# ============================================================
-
-def search_events_for_area(client: Anthropic, area: dict, today_iso: str) -> list[dict]:
-    """Chiama Claude con web_search per una singola area, parsa il JSON."""
+def search_events_for_area(client, area, today_iso):
     print(f"  -> Cerca: {area['name']}...", flush=True)
 
     response = client.messages.create(
@@ -132,14 +111,12 @@ def search_events_for_area(client: Anthropic, area: dict, today_iso: str) -> lis
         }],
     )
 
-    # Estrai il testo finale dalla risposta (può contenere blocchi multipli)
     text_blocks = [b.text for b in response.content if b.type == "text"]
     full_text = "\n".join(text_blocks)
 
-    # Estrai il JSON: cerchiamo il primo oggetto { ... } valido
     json_match = re.search(r"\{[\s\S]*\}", full_text)
     if not json_match:
-        print(f"     [warn] nessun JSON valido nella risposta", flush=True)
+        print("     [warn] nessun JSON valido nella risposta", flush=True)
         return []
 
     try:
@@ -152,20 +129,14 @@ def search_events_for_area(client: Anthropic, area: dict, today_iso: str) -> lis
         return []
 
 
-# ============================================================
-# DEDUPLICA E ORDINAMENTO
-# ============================================================
-
-def normalize_title(title: str) -> str:
-    """Per la deduplica: minuscolo, niente punteggiatura, spazi singoli."""
+def normalize_title(title):
     t = title.lower()
     t = re.sub(r"[^\w\s]", " ", t)
     t = re.sub(r"\s+", " ", t).strip()
     return t
 
 
-def deduplicate(events: list[dict]) -> list[dict]:
-    """Rimuove duplicati basandosi su titolo+data."""
+def deduplicate(events):
     seen = set()
     unique = []
     for ev in events:
@@ -177,14 +148,9 @@ def deduplicate(events: list[dict]) -> list[dict]:
     return unique
 
 
-def sort_by_date(events: list[dict]) -> list[dict]:
-    """Ordina per data crescente, gli eventi senza data vanno in fondo."""
+def sort_by_date(events):
     return sorted(events, key=lambda e: e.get("date") or "9999-99-99")
 
-
-# ============================================================
-# OUTPUT MARKDOWN
-# ============================================================
 
 MONTHS_IT = {
     "01": "gennaio", "02": "febbraio", "03": "marzo", "04": "aprile",
@@ -193,8 +159,7 @@ MONTHS_IT = {
 }
 
 
-def format_date_it(iso_date: str) -> str:
-    """'2026-05-14' -> '14 maggio 2026'"""
+def format_date_it(iso_date):
     try:
         y, m, d = iso_date.split("-")
         return f"{int(d)} {MONTHS_IT.get(m, m)} {y}"
@@ -202,21 +167,19 @@ def format_date_it(iso_date: str) -> str:
         return iso_date
 
 
-def generate_markdown(events: list[dict], today_iso: str) -> str:
-    """Genera la lista Markdown raggruppata per area."""
+def generate_markdown(events, today_iso):
     today_str = format_date_it(today_iso)
     lines = [
-        f"# ENEA Event Monitor",
-        f"",
-        f"_Report generato il {today_str} — {len(events)} eventi futuri trovati_",
-        f"",
+        "# ENEA Event Monitor",
+        "",
+        f"_Report generato il {today_str} - {len(events)} eventi futuri trovati_",
+        "",
     ]
 
     if not events:
         lines.append("Nessun evento trovato in questa esecuzione.")
         return "\n".join(lines)
 
-    # Raggruppa per area
     by_area = {}
     for ev in events:
         area = ev.get("area", "Altro")
@@ -232,27 +195,22 @@ def generate_markdown(events: list[dict], today_iso: str) -> str:
             location = ev.get("location", "n.d.")
             organizer = ev.get("organizer", "n.d.")
             lines.append(f"- **[{title}]({url})**  ")
-            lines.append(f"  📅 {date_it} · 📍 {location} · 🏛 {organizer}")
+            lines.append(f"  Data: {date_it} | Luogo: {location} | Organizzatore: {organizer}")
             lines.append("")
         lines.append("")
 
     return "\n".join(lines)
 
 
-# ============================================================
-# MAIN
-# ============================================================
-
 def main():
     api_key = os.environ.get("ANTHROPIC_API_KEY")
     if not api_key:
         print("[ERRORE] Manca la variabile ANTHROPIC_API_KEY", file=sys.stderr)
-        print("         export ANTHROPIC_API_KEY=sk-ant-...", file=sys.stderr)
         sys.exit(1)
 
     today = datetime.now()
     today_iso = today.strftime("%Y-%m-%d")
-    print(f"[INFO] ENEA Event Monitor — {today_iso}")
+    print(f"[INFO] ENEA Event Monitor V2 - {today_iso}")
     print(f"[INFO] Modello: {MODEL}")
     print(f"[INFO] Aree tematiche: {len(AREAS)}")
     print()
