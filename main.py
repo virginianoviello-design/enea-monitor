@@ -6,6 +6,7 @@ import json
 import os
 import re
 import sys
+import time
 from datetime import datetime
 from pathlib import Path
 
@@ -37,7 +38,8 @@ AREAS = [
 
 MODEL = "claude-sonnet-4-6"
 MAX_TOKENS = 4096
-WEB_SEARCH_MAX_USES = 3
+WEB_SEARCH_MAX_USES = 2
+PAUSE_BETWEEN_AREAS = 35
 
 
 def build_search_prompt(area, today_iso):
@@ -45,40 +47,38 @@ def build_search_prompt(area, today_iso):
 
 Oggi e il {today_iso}.
 
-Cerca sul web TUTTI gli eventi, convegni, conferenze, webinar e presentazioni
+Cerca sul web eventi, convegni, conferenze, webinar e presentazioni
 italiani FUTURI (data uguale o successiva a oggi) sull'area tematica:
 "{area['name']}"
 
-Parole chiave correlate: {area['keywords']}
+Parole chiave: {area['keywords']}
 
 Concentrati su eventi organizzati da:
-- Associazioni di settore (Italia Solare, Elettricita Futura, ANEV, FIRE,
-  Kyoto Club, Motus-E, Coordinamento FREE, Comieco, Utilitalia, ASviS,
-  Legambiente, WEC Italia, Fondazione per lo Sviluppo Sostenibile)
-- Istituzioni (MASE, ARERA, GSE, Quirinale, Senato)
-- Media specializzati (Il Sole 24 Ore, Staffetta Quotidiana)
-- Universita e think tank (TEHA / The European House Ambrosetti)
+- Italia Solare, Elettricita Futura, ANEV, FIRE, Kyoto Club, Motus-E,
+  Coordinamento FREE, Comieco, Utilitalia, ASviS, Legambiente, WEC Italia,
+  Fondazione per lo Sviluppo Sostenibile, MASE, ARERA, GSE,
+  Il Sole 24 Ore, Staffetta Quotidiana, TEHA
 
-Per ogni evento trovato, restituisci ESCLUSIVAMENTE un oggetto JSON puro,
+Restituisci ESCLUSIVAMENTE un oggetto JSON puro,
 niente testo prima o dopo, niente markdown, niente backtick:
 
 {{
   "events": [
     {{
-      "title": "Titolo esatto dell'evento",
+      "title": "Titolo evento",
       "date": "YYYY-MM-DD",
-      "location": "Citta, oppure Online",
-      "organizer": "Chi organizza l'evento",
-      "url": "Link diretto alla pagina dell'evento",
+      "location": "Citta o Online",
+      "organizer": "Chi organizza",
+      "url": "Link diretto",
       "area": "{area['name']}"
     }}
   ]
 }}
 
 Regole:
-- Includi solo eventi con un link verificabile
-- NON inventare eventi: se non trovi nulla, restituisci {{"events": []}}
-- Massimo 15 eventi per area
+- Solo eventi con link verificabile
+- NON inventare eventi: se nulla, restituisci {{"events": []}}
+- Massimo 10 eventi per area
 """
 
 
@@ -201,13 +201,17 @@ def main():
     print(f"[INFO] ENEA Event Monitor V2 - {today_iso}")
     print(f"[INFO] Modello: {MODEL}")
     print(f"[INFO] Aree tematiche: {len(AREAS)}")
+    print(f"[INFO] Pausa tra aree: {PAUSE_BETWEEN_AREAS}s (per rispettare rate limit)")
     print()
 
     client = Anthropic(api_key=api_key)
 
     print("[STEP 1/3] Ricerca eventi per area...")
     all_events = []
-    for area in AREAS:
+    for i, area in enumerate(AREAS):
+        if i > 0:
+            print(f"  (pausa {PAUSE_BETWEEN_AREAS}s per rispettare rate limit...)", flush=True)
+            time.sleep(PAUSE_BETWEEN_AREAS)
         events = search_events_for_area(client, area, today_iso)
         all_events.extend(events)
     print(f"  Totale lordo: {len(all_events)} eventi")
