@@ -1,0 +1,6 @@
+reportlab>=4.0.0
+requests>=2.31.0
+beautifulsoup4>=4.12.0
+feedparser>=6.0.10
+# Opzionali (scommentare se si usa il fallback LLM):
+# anthropic>=0.40.0
