@@ -1,0 +1,31 @@
+name: Monitor settimanale ENEA
+
+on:
+  schedule:
+    - cron: '0 5 * * 1'   # ogni lunedì alle 07:00 ora italiana (= 05:00 UTC)
+  workflow_dispatch:        # permette anche l'avvio manuale dal sito
+
+jobs:
+  generate-report:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Scarica i file del repository
+        uses: actions/checkout@v4
+
+      - name: Installa Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Installa le librerie
+        run: pip install -r requirements.txt
+
+      - name: Esegui il flusso di monitoraggio
+        run: python main.py
+
+      - name: Salva il PDF come artifact scaricabile
+        uses: actions/upload-artifact@v4
+        with:
+          name: report-settimana-${{ github.run_number }}
+          path: output/
+          retention-days: 90
