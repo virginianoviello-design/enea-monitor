@@ -51,7 +51,7 @@ AREAS = [
     },
 ]
 
-MODEL = "claude-sonnet-4-5"
+MODEL = "claude-sonnet-4-6"
 MAX_TOKENS = 4096
 WEB_SEARCH_MAX_USES = 3  # max ricerche web per ciascuna area
 
